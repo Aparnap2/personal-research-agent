@@ -1,0 +1,21 @@
+# General Python ignores
+*.pyc
+__pycache__/
+.DS_Store  # macOS
+/venv
+/env
+*.sqlite3
+*.db
+
+# VS Code
+.vscode/
+
+# Backend-specific (adjust based on your project)
+/instance
+*.log
+secrets.json  # If you have one
+
+# Frontend - React/Vite
+
+
+# Add any other build artifacts or environment files specific to your setup

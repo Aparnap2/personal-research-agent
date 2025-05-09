@@ -1,0 +1,14 @@
+Flask
+Flask-CORS
+langchain
+langchain-google-genai
+langgraph
+python-dotenv
+markdown2
+crawl4ai 
+matplotlib
+numpy
+scipy
+pandas
+beautifulsoup4 # For parsing SERP results if needed
+requests # For simple HTTP requests if needed
