@@ -23,8 +23,8 @@ class WebScraperTool:
             )
             run_conf = CrawlerRunConfig(
                 cache_mode=CacheMode.BYPASS,
-                markdown_generator=md_generator,
-                timeout_seconds=100 # Slightly longer for potentially complex pages
+                markdown_generator=md_generator
+                # timeout_seconds parameter is not supported in this version
             )
             async with AsyncWebCrawler(config=browser_conf) as crawler:
                 result = await crawler.arun(url=url, config=run_conf)
@@ -53,29 +53,66 @@ class WebScraperTool:
         urls = []
         try:
             soup = BeautifulSoup(html_content, 'html.parser')
-            # DuckDuckGo's structure can change. This selector is an example and likely needs updates.
-            # Looking for result links, often within <a> tags with specific classes or parent structures.
-            # Example (very hypothetical, inspect actual DDG HTML):
-            # result_links = soup.select('div.results article div.result__body h2 a.result__a')
-            # A more common pattern for DDG is links with `data-testid="result-title-a"`
+            
+            # Try multiple selectors for DuckDuckGo results
+            # First try: Modern DuckDuckGo HTML results
             result_links = soup.find_all('a', attrs={'data-testid': 'result-title-a'}, href=True)
-
-            if not result_links: # Fallback to a more generic search for links if specific one fails
+            
+            # Second try: Look for results in the HTML version
+            if not result_links:
+                result_links = soup.select('.result__a')
+            
+            # Third try: Look for links in result bodies
+            if not result_links:
+                result_links = soup.select('.result__body a')
+                
+            # Fourth try: Look for links with specific classes
+            if not result_links:
+                result_links = soup.select('.links_main a')
+                
+            # Fifth try: Look for results with specific structure
+            if not result_links:
+                result_links = soup.select('div.results div.result h2 a')
+                
+            # Sixth try: Look for results with newer structure
+            if not result_links:
+                result_links = soup.select('article h2 a')
+                
+            # If all specific selectors fail, fall back to a more generic approach
+            if not result_links:
                 logger.warning(f"[{project_id}] WebScraperTool: Specific DDG selectors failed. Trying generic link search on SERP.")
-                # This is very broad and might pick up non-result links
-                all_links = soup.find_all('a', href=True)
-                # Try to filter for plausible result links (e.g., not internal DDG links, not ads)
-                for link in all_links:
-                    href = link['href']
-                    if href.startswith("http") and "duckduckgo.com" not in href and "duck.com" not in href:
-                         # Further filtering might be needed (e.g., based on link text or parent elements)
-                        if len(urls) < max_results * 2: # Get a bit more to filter down
-                            urls.append(href)
-                        else:
-                            break
-                # If we used this fallback, we might have many irrelevant links.
-                # An LLM call to filter these URLs based on relevance to the query might be needed.
-                # For now, we'll just take them.
+                
+                # Look for result containers first
+                result_containers = soup.select('.web-result')
+                if result_containers:
+                    for container in result_containers:
+                        links = container.find_all('a', href=True)
+                        for link in links:
+                            href = link['href']
+                            if href.startswith("http") and "duckduckgo.com" not in href and "duck.com" not in href:
+                                urls.append(href)
+                                if len(urls) >= max_results:
+                                    break
+                
+                # If still no results, try all links with filtering
+                if not urls:
+                    all_links = soup.find_all('a', href=True)
+                    for link in all_links:
+                        href = link['href']
+                        # Filter out navigation, ads, and internal links
+                        if (href.startswith("http") and 
+                            "duckduckgo.com" not in href and 
+                            "duck.com" not in href and
+                            "/settings" not in href and
+                            "javascript:" not in href and
+                            not href.startswith("#")):
+                            
+                            # Check if it has meaningful text content
+                            if link.text and len(link.text.strip()) > 10:
+                                urls.append(href)
+                                if len(urls) >= max_results * 2:
+                                    break
+                
                 logger.info(f"[{project_id}] WebScraperTool: Found {len(urls)} potential URLs via generic SERP link search.")
 
 
@@ -101,7 +138,7 @@ class WebScraperTool:
         Performs a search on DuckDuckGo, scrapes the SERP, and extracts result URLs.
         """
         logger.info(f"[{project_id}] WebScraperTool: Performing search for query: '{query}'")
-        search_url = f"https://html.duckduckgo.com/html/?q={quote_plus(query)}" # Use HTML version for easier parsing
+        search_url = f"https://www.google.com/html/?q={quote_plus(query)}" # Use HTML version for easier parsing
         
         logger.info(f"[{project_id}] WebScraperTool: Scraping SERP URL: {search_url}")
         serp_html = await self._scrape_single_url_to_markdown(search_url, project_id) # Misnomer, it returns HTML for DDG HTML version

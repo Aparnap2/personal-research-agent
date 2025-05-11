@@ -1,52 +1,56 @@
 import { createTheme } from '@mui/material/styles';
-import { red } from '@mui/material/colors';
 
-// Create a theme instance.
 const theme = createTheme({
   palette: {
     primary: {
-      main: '#556cd6', // Example primary color
+      main: '#1976d2',
+      dark: '#115293',
     },
     secondary: {
-      main: '#19857b', // Example secondary color
-    },
-    error: {
-      main: red.A400,
+      main: '#d32f2f',
     },
     background: {
-      default: '#f4f6f8', // Light grey background
+      default: '#f5f5f5',
+      paper: '#ffffff',
     },
   },
   typography: {
     fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
-    h4: {
-      fontWeight: 600,
-    },
     h5: {
-      fontWeight: 500,
+      fontWeight: 700,
     },
     h6: {
-      fontWeight: 500,
-    }
+      fontWeight: 600,
+    },
+    body2: {
+      lineHeight: 1.6,
+    },
   },
   components: {
     MuiPaper: {
       styleOverrides: {
         root: {
-          padding: '20px',
-          marginBottom: '20px',
-        }
-      }
+          transition: 'all 0.2s',
+        },
+      },
     },
-    MuiCard: {
-        styleOverrides: {
-            root: {
-                transition: 'transform 0.15s ease-in-out, box-shadow 0.15s ease-in-out',
-                '&:hover': { transform: 'scale3d(1.02, 1.02, 1)', boxShadow: '0px 5px 15px rgba(0,0,0,0.1)' },
-            }
-        }
-    }
-  }
+    MuiButton: {
+      styleOverrides: {
+        root: {
+          borderRadius: 8,
+          textTransform: 'none',
+          padding: '8px 16px',
+        },
+      },
+    },
+    MuiTabs: {
+      styleOverrides: {
+        indicator: {
+          height: 3,
+        },
+      },
+    },
+  },
 });
 
 export default theme;

@@ -6,6 +6,7 @@ import json
 import logging
 import time # For initial message timestamp
 import agent_definition
+import database # Import our SQLite database module
 
 # Configure basic logging for Flask app
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - [%(threadName)s] - %(message)s (%(filename)s:%(lineno)d)')
@@ -17,7 +18,7 @@ logging.getLogger('werkzeug').setLevel(logging.WARNING)
 app = Flask(__name__, static_folder='../frontend/dist', static_url_path='/')
 
 # Robust CORS for development (allows Vite dev server) and potentially production
-CORS(app, resources={r"/api/*": {
+CORS(app, resources={r"/*": {
     "origins": ["http://localhost:5173", "http://127.0.0.1:5173"], # Add your frontend dev origin(s)
     "methods": ["GET", "POST", "OPTIONS"],
     "allow_headers": ["Content-Type", "Authorization", "X-Requested-With"],
@@ -155,6 +156,137 @@ def get_research_chart_route(project_id, filename):
         return "Chart not found", 404
         
     return send_from_directory(charts_dir, filename)
+
+@app.route('/api/dashboard/stats', methods=['GET'])
+def get_dashboard_stats():
+    """Get statistics for the dashboard."""
+    try:
+        stats = database.get_project_stats()
+        return jsonify(stats), 200
+    except Exception as e:
+        flask_logger.error(f"API: Error getting dashboard stats: {e}", exc_info=True)
+        return jsonify({"error": f"Error getting dashboard stats: {str(e)}"}), 500
+
+@app.route('/api/projects', methods=['GET'])
+def get_projects():
+    """Get a list of all research projects."""
+    try:
+        limit = request.args.get('limit', 50, type=int)
+        offset = request.args.get('offset', 0, type=int)
+        status = request.args.get('status')
+        
+        projects = database.get_all_projects(limit, offset, status)
+        return jsonify({"projects": projects, "total": len(projects)}), 200
+    except Exception as e:
+        flask_logger.error(f"API: Error getting projects: {e}", exc_info=True)
+        return jsonify({"error": f"Error getting projects: {str(e)}"}), 500
+
+@app.route('/api/projects/<project_id>', methods=['GET'])
+def get_project(project_id):
+    """Get details for a specific project."""
+    try:
+        project = database.get_project(project_id)
+        if not project:
+            return jsonify({"error": "Project not found"}), 404
+        return jsonify(project), 200
+    except Exception as e:
+        flask_logger.error(f"API: Error getting project {project_id}: {e}", exc_info=True)
+        return jsonify({"error": f"Error getting project: {str(e)}"}), 500
+
+@app.route('/api/projects/<project_id>', methods=['DELETE'])
+def delete_project(project_id):
+    """Delete a project."""
+    try:
+        success = database.delete_project(project_id)
+        if not success:
+            return jsonify({"error": "Failed to delete project"}), 500
+        return jsonify({"message": "Project deleted successfully"}), 200
+    except Exception as e:
+        flask_logger.error(f"API: Error deleting project {project_id}: {e}", exc_info=True)
+        return jsonify({"error": f"Error deleting project: {str(e)}"}), 500
+
+@app.route('/api/settings', methods=['GET'])
+def get_settings():
+    """Get application settings."""
+    try:
+        # Get API key (masked for security)
+        gemini_key = os.getenv("GEMINI_API_KEY", "")
+        masked_key = ""
+        if gemini_key:
+            # Mask the API key, showing only first and last 4 characters
+            if len(gemini_key) > 8:
+                masked_key = gemini_key[:4] + "*" * (len(gemini_key) - 8) + gemini_key[-4:]
+            else:
+                masked_key = "****"
+        
+        # Get other settings from environment variables
+        settings = {
+            "api_key": masked_key,
+            "api_key_set": bool(gemini_key),
+            "api_model": os.getenv("API_MODEL", "gemini-1.5-flash"),
+            "temperature": float(os.getenv("TEMPERATURE", "0.3")),
+            "max_projects": int(os.getenv("MAX_PROJECTS", "50")),
+            "storage_location": "local",  # Currently only local SQLite is supported
+            "debug_mode": os.getenv("DEBUG", "False").lower() == "true"
+        }
+        
+        return jsonify(settings), 200
+    except Exception as e:
+        flask_logger.error(f"API: Error getting settings: {e}", exc_info=True)
+        return jsonify({"error": f"Error getting settings: {str(e)}"}), 500
+
+@app.route('/api/settings', methods=['POST'])
+def update_settings():
+    """Update application settings."""
+    try:
+        if not request.is_json:
+            return jsonify({"error": "Request must be JSON"}), 400
+            
+        data = request.get_json()
+        
+        # Update .env file with new settings
+        env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
+        
+        # Read existing .env file
+        env_vars = {}
+        if os.path.exists(env_path):
+            with open(env_path, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#') and '=' in line:
+                        key, value = line.split('=', 1)
+                        env_vars[key] = value
+        
+        # Update with new values
+        if 'api_key' in data and data['api_key'] and not data['api_key'].startswith('*'):
+            env_vars['GEMINI_API_KEY'] = data['api_key']
+            os.environ['GEMINI_API_KEY'] = data['api_key']
+        
+        if 'api_model' in data:
+            env_vars['API_MODEL'] = data['api_model']
+            os.environ['API_MODEL'] = data['api_model']
+            
+        if 'temperature' in data:
+            env_vars['TEMPERATURE'] = str(data['temperature'])
+            os.environ['TEMPERATURE'] = str(data['temperature'])
+            
+        if 'max_projects' in data:
+            env_vars['MAX_PROJECTS'] = str(data['max_projects'])
+            os.environ['MAX_PROJECTS'] = str(data['max_projects'])
+            
+        if 'debug_mode' in data:
+            env_vars['DEBUG'] = str(data['debug_mode']).lower()
+            os.environ['DEBUG'] = str(data['debug_mode']).lower()
+        
+        # Write back to .env file
+        with open(env_path, 'w') as f:
+            for key, value in env_vars.items():
+                f.write(f"{key}={value}\n")
+        
+        return jsonify({"message": "Settings updated successfully"}), 200
+    except Exception as e:
+        flask_logger.error(f"API: Error updating settings: {e}", exc_info=True)
+        return jsonify({"error": f"Error updating settings: {str(e)}"}), 500
 
 if __name__ == '__main__':
     gemini_key = os.getenv("GEMINI_API_KEY")

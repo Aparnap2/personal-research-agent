@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  flask-app:
+    build: ./backend
+    ports:
+      - "5001:5001"
+    volumes:
+      - ./backend:/app
+      - ./research_projects:/app/research_projects
+    environment:
+      - FLASK_ENV=development
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      - code-executor
+
+  code-executor:
+    build: ./backend/docker
+    volumes:
+      - ./backend/docker/input:/app/input
+      - ./backend/docker/output:/app/output
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1

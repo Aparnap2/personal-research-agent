@@ -1,0 +1,31 @@
+# Core dependencies
+fastapi>=0.95.0
+uvicorn>=0.21.1
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+requests>=2.28.2
+beautifulsoup4>=4.11.2
+aiohttp>=3.8.4
+
+# LangGraph and LLM dependencies
+langgraph>=0.0.30
+langchain>=0.0.267
+langchain-core>=0.0.10
+google-generativeai>=0.3.0
+
+# Data processing
+pandas>=2.0.0
+numpy>=1.24.3
+matplotlib>=3.7.1
+seaborn>=0.12.2
+
+# Web scraping and processing
+selenium>=4.8.3
+webdriver-manager>=3.8.6
+html2text>=2020.1.16
+markdownify>=0.11.6
+
+# Utilities
+tqdm>=4.65.0
+pytz>=2023.3
+python-slugify>=8.0.1
