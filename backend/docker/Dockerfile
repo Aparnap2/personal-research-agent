@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python packages for data analysis and visualization
-RUN pip instal \
+RUN pip install --no-cache-dir \
     numpy \
     pandas \
     matplotlib \
@@ -38,5 +38,14 @@ ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV MPLCONFIGDIR=/tmp/matplotlib
 
-# Command to run when container starts
-CMD ["python", "-u", "code_executor.py"]
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import os; exit(0 if os.path.exists('/app/healthy') else 1)"
+
+# Resource limits via Python (soft limits, docker-compose can enforce hard limits)
+CMD ["python", "-c", \
+     "import os; " \
+     "os.environ['OPENBLAS_NUM_THREADS'] = '1'; " \
+     "os.environ['MKL_NUM_THREADS'] = '1'; " \
+     "with open('/app/healthy', 'w') as f: f.write('ready'); " \
+     "import code_executor; code_executor.main()"]

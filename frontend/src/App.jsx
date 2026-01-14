@@ -1,28 +1,25 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  ThemeProvider, 
-  CssBaseline, 
-  Container, 
-  Typography, 
-  Box, 
-  AppBar, 
-  Toolbar, 
-  CircularProgress, 
-  Alert, 
-  Paper, 
-  Grid, 
-  LinearProgress,
+import React, { useState, useCallback } from 'react';
+import {
+  ThemeProvider,
+  CssBaseline,
+  Box,
+  Typography,
+  AppBar,
+  Toolbar,
+  IconButton,
+  Tooltip,
   Drawer,
   List,
   ListItem,
   ListItemIcon,
   ListItemText,
   Divider,
-  IconButton,
+  Tabs,
+  Tab,
   useMediaQuery,
-  Tooltip,
-  Fade,
-  Chip
+  Chip,
+  Paper,
+  Alert
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import CloseIcon from '@mui/icons-material/Close';
@@ -33,184 +30,196 @@ import SearchIcon from '@mui/icons-material/Search';
 import SettingsIcon from '@mui/icons-material/Settings';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import GitHubIcon from '@mui/icons-material/GitHub';
-import ResearchForm from './components/ResearchForm';
+import ViewListIcon from '@mui/icons-material/ViewList';
+import MapIcon from '@mui/icons-material/Map';
+import ChatIcon from '@mui/icons-material/Chat';
+import ArticleIcon from '@mui/icons-material/Article';
+import ChatInterface from './components/ChatInterface';
+import ResearchMindmap from './components/ResearchMindmap';
 import ReportDisplay from './components/ReportDisplay';
-import AgentLog from './components/AgentLog';
 import ProjectHistory from './components/ProjectHistory';
 import Dashboard from './components/DashboardWithRealData';
 import Settings from './components/Settings';
-import { startResearch, getResearchStatus } from './services/api';
+import { startResearch, getResearchStatus, getSubQuestions, getResearchReport } from './services/api';
 import theme from './theme';
 
+const DRAWER_WIDTH = 240;
+const RIGHT_PANEL_WIDTH = 400;
+
 function App() {
-  const [projectId, setProjectId] = useState(null);
-  const [reportData, setReportData] = useState(null);
-  const [isStarting, setIsStarting] = useState(false);
-  const [isPolling, setIsPolling] = useState(false);
-  const [error, setError] = useState('');
-  const [pollingIntervalId, setPollingIntervalId] = useState(null);
-  const [agentMessages, setAgentMessages] = useState([]);
-  const [progress, setProgress] = useState(0);
-  const [currentNodeMessage, setCurrentNodeMessage] = useState('Awaiting research task...');
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [activeView, setActiveView] = useState('research'); // 'research', 'history', 'dashboard', 'settings'
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
-  const clearState = () => {
-    setProjectId(null);
-    setReportData(null);
-    setIsStarting(false);
-    setIsPolling(false);
-    setError('');
-    setAgentMessages([]);
-    setProgress(0);
-    setCurrentNodeMessage('Awaiting research task...');
-    if (pollingIntervalId) {
-      clearInterval(pollingIntervalId);
-      setPollingIntervalId(null);
-    }
-  };
-  
-  const toggleDrawer = () => {
-    setDrawerOpen(!drawerOpen);
-  };
-  
+  // Navigation state
+  const [drawerOpen, setDrawerOpen] = useState(!isMobile);
+  const [activeView, setActiveView] = useState('research'); // 'research', 'history', 'dashboard', 'settings'
+
+  // Research state
+  const [projectId, setProjectId] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  // Chat state
+  const [messages, setMessages] = useState([]);
+  const [subQuestions, setSubQuestions] = useState([]);
+  const [reportData, setReportData] = useState(null);
+
+  // Right panel state
+  const [rightPanelTab, setRightPanelTab] = useState(0); // 0: Mindmap, 1: Report, 2: Sources
+  const [rightPanelOpen, setRightPanelOpen] = useState(true);
+
+  const toggleDrawer = () => setDrawerOpen(!drawerOpen);
+
   const handleViewChange = (view) => {
     setActiveView(view);
-    if (isMobile) {
-      setDrawerOpen(false);
-    }
-  };
-  
-  const handleSelectHistoryProject = (selectedProjectId) => {
-    // In a real implementation, this would fetch the project data
-    setProjectId(selectedProjectId);
-    setActiveView('research');
-    // Mock loading a report from history
-    setIsPolling(true);
-    setTimeout(() => {
-      // This is just a mock - in reality you'd fetch the actual report data
-      const mockHistoricalReport = {
-        project_id: selectedProjectId,
-        completed: true,
-        report_markdown: "# Historical Report\n\nThis is a previously generated report that was loaded from history.",
-        charts: [],
-        current_node_message: "Completed"
-      };
-      setReportData(mockHistoricalReport);
-      setIsPolling(false);
-    }, 1500);
+    if (isMobile) setDrawerOpen(false);
   };
 
-  const handleStartResearch = async (query) => {
-    clearState();
-    setIsStarting(true);
-    setAgentMessages([{ 
-      timestamp: new Date().toISOString(), 
-      text: 'Initializing research process...',
-      type: 'system'
-    }]);
+  // Load sub-questions and report when project is selected
+  const loadProjectData = useCallback(async (pid) => {
+    try {
+      const [subQData, report] = await Promise.all([
+        getSubQuestions(pid).catch(() => ({ sub_questions: [] })),
+        getResearchReport(pid).catch(() => null)
+      ]);
+      setSubQuestions(subQData.sub_questions || []);
+      if (report) setReportData(report);
+    } catch (err) {
+      console.error('Error loading project data:', err);
+    }
+  }, []);
+
+  // Handle starting a new research
+  const handleSendMessage = async (message) => {
+    if (!message.trim()) return;
+
+    // Add user message
+    const userMsg = {
+      role: 'user',
+      content: message,
+      timestamp: new Date().toISOString()
+    };
+    setMessages(prev => [...prev, userMsg]);
+    setIsLoading(true);
+    setError('');
 
     try {
-      const response = await startResearch(query);
-      if (!response?.project_id) {
-        throw new Error('Failed to get project ID from server');
-      }
-      
-      setProjectId(response.project_id);
-      setIsStarting(false);
-      setIsPolling(true);
-      setAgentMessages(prev => [...prev, {
-        timestamp: new Date().toISOString(),
-        text: `Research started with ID: ${response.project_id}`,
-        type: 'success'
+      // Start research
+      const response = await startResearch(message);
+      const newProjectId = response.project_id;
+      setProjectId(newProjectId);
+
+      // Add system message
+      setMessages(prev => [...prev, {
+        role: 'system',
+        title: 'Research Started',
+        content: `Research initialized with ID: ${newProjectId.slice(0, 8)}...`,
+        timestamp: new Date().toISOString()
       }]);
+
+      // Poll for status updates
+      await pollResearchStatus(newProjectId);
+
     } catch (err) {
-      console.error("Start research error:", err);
-      setError(err.message || 'Failed to start research. Is the backend server running?');
-      setIsStarting(false);
-      setAgentMessages(prev => [...prev, {
-        timestamp: new Date().toISOString(),
-        text: `Initialization failed: ${err.message}`,
-        type: 'error'
+      console.error('Research error:', err);
+      setError(err.message || 'Failed to start research');
+      setMessages(prev => [...prev, {
+        role: 'system',
+        title: 'Error',
+        content: err.message,
+        timestamp: new Date().toISOString()
       }]);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  useEffect(() => {
-    if (isPolling && projectId) {
-      const intervalId = setInterval(async () => {
-        try {
-          const statusResponse = await getResearchStatus(projectId);
-          
-          // Update messages
-          const newMessages = (statusResponse.messages || []).map(msg => ({
-            timestamp: msg.timestamp || new Date().toISOString(),
-            text: msg.text || 'Unknown message',
-            type: msg.type || 'info'
-          }));
-          setAgentMessages(newMessages);
+  // Poll research status until complete
+  const pollResearchStatus = async (pid) => {
+    const maxAttempts = 120; // 6 minutes max
+    let attempts = 0;
 
-          // Update current node message
-          setCurrentNodeMessage(statusResponse.current_node_message || 'Processing...');
+    const poll = async () => {
+      attempts++;
+      if (attempts > maxAttempts) {
+        setError('Research timed out');
+        return;
+      }
 
-          // Update progress based on phase
-          let newProgress = 0;
-          const nodeMsg = statusResponse.current_node_message?.toLowerCase() || '';
-          if (nodeMsg.includes('phase 1') || nodeMsg.includes('planning')) newProgress = 15;
-          else if (nodeMsg.includes('phase 2') || nodeMsg.includes('search') || nodeMsg.includes('scraping')) newProgress = 30;
-          else if (nodeMsg.includes('phase 3') || nodeMsg.includes('synthesis')) newProgress = 50;
-          else if (nodeMsg.includes('phase 4') || nodeMsg.includes('quantitative')) newProgress = 65;
-          else if (nodeMsg.includes('phase 5') || nodeMsg.includes('statistical')) newProgress = 75;
-          else if (nodeMsg.includes('phase 6') || nodeMsg.includes('visualization')) newProgress = 85;
-          else if (nodeMsg.includes('phase 7') || nodeMsg.includes('report')) newProgress = 95;
-          if (statusResponse.completed) newProgress = 100;
-          setProgress(newProgress);
+      try {
+        const status = await getResearchStatus(pid);
 
-          // Stop polling if completed
-          if (statusResponse.completed) {
-            setReportData(statusResponse);
-            setIsPolling(false);
-            setProgress(100);
-            clearInterval(intervalId);
-            setPollingIntervalId(null);
-            setAgentMessages(prev => [...prev, {
-              timestamp: new Date().toISOString(),
-              text: statusResponse.error_message 
-                ? `Research completed with issues: ${statusResponse.error_message}`
-                : 'Research completed successfully!',
-              type: statusResponse.error_message ? 'error' : 'success'
-            }]);
-          }
-        } catch (pollError) {
-          console.error("Polling error:", pollError);
-          setError('Failed to get research updates. Please check your connection.');
-          setIsPolling(false);
-          setProgress(0);
-          clearInterval(intervalId);
-          setPollingIntervalId(null);
-          setAgentMessages(prev => [...prev, {
-            timestamp: new Date().toISOString(),
-            text: `Polling failed: ${pollError.message}`,
-            type: 'error'
-          }]);
+        // Update messages based on status
+        if (status.messages && status.messages.length > 0) {
+          const latestMsg = status.messages[status.messages.length - 1];
+          setMessages(prev => {
+            const filtered = prev.filter(p =>
+              !(p.role === 'assistant' && p.title === 'Thinking')
+            );
+            return [...filtered, {
+              role: 'assistant',
+              title: latestMsg.type === 'error' ? 'Error' : 'Research Update',
+              content: latestMsg.text || latestMsg.content || '',
+              timestamp: latestMsg.timestamp || new Date().toISOString()
+            }];
+          });
         }
-      }, 3000); // Poll every 3 seconds
-      setPollingIntervalId(intervalId);
-      return () => clearInterval(intervalId);
+
+        // Update sub-questions if available
+        if (status.sub_questions) {
+          setSubQuestions(status.sub_questions);
+        }
+
+        if (status.completed) {
+          // Load final report
+          const report = await getResearchReport(pid).catch(() => null);
+          if (report) {
+            setReportData(report);
+            setSubQuestions(report.sub_questions || []);
+          }
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            title: 'Complete',
+            content: 'Research completed successfully!',
+            timestamp: new Date().toISOString()
+          }]);
+        } else {
+          // Continue polling
+          setTimeout(poll, 2000);
+        }
+      } catch (err) {
+        console.error('Polling error:', err);
+        if (attempts < maxAttempts) {
+          setTimeout(poll, 3000);
+        } else {
+          setError('Failed to get research updates');
+        }
+      }
+    };
+
+    poll();
+  };
+
+  // Handle node click in mindmap
+  const handleNodeClick = (node, subQuestion) => {
+    if (subQuestion) {
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        title: 'Question Details',
+        content: subQuestion.question || node.data?.label,
+        timestamp: new Date().toISOString()
+      }]);
     }
-  }, [isPolling, projectId]);
+  };
 
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+      <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
         {/* App Bar */}
-        <AppBar position="static" sx={{ bgcolor: 'primary.dark', zIndex: (theme) => theme.zIndex.drawer + 1 }}>
+        <AppBar position="static" sx={{ bgcolor: 'primary.dark' }}>
           <Toolbar>
             <IconButton
               color="inherit"
-              aria-label="open drawer"
               edge="start"
               onClick={toggleDrawer}
               sx={{ mr: 2 }}
@@ -218,11 +227,12 @@ function App() {
               <MenuIcon />
             </IconButton>
             <AnalyticsIcon sx={{ mr: 2 }} />
-            <Typography variant="h6" component="div" sx={{ flexGrow: 1, fontWeight: 'bold' }}>
+            <Typography variant="h6" sx={{ flexGrow: 1, fontWeight: 'bold' }}>
               Research Intelligence Platform
             </Typography>
             <Tooltip title="View on GitHub">
-              <IconButton color="inherit" component="a" href="https://github.com/Aparnap2/personal-research-agent" target="_blank">
+              <IconButton color="inherit" component="a"
+                href="https://github.com/Aparnap2/personal-research-agent" target="_blank">
                 <GitHubIcon />
               </IconButton>
             </Tooltip>
@@ -232,102 +242,67 @@ function App() {
               </IconButton>
             </Tooltip>
           </Toolbar>
-          {(isStarting || isPolling) && (
-            <LinearProgress 
-              variant={progress > 0 ? "determinate" : "indeterminate"} 
-              value={progress} 
-              sx={{ height: 4 }} 
-            />
-          )}
         </AppBar>
-        
-        {/* Navigation Drawer */}
-        <Drawer
-          variant={isMobile ? "temporary" : "persistent"}
-          open={isMobile ? drawerOpen : true}
-          onClose={toggleDrawer}
-          sx={{
-            width: 240,
-            flexShrink: 0,
-            '& .MuiDrawer-paper': {
-              width: 240,
-              boxSizing: 'border-box',
-              top: ['48px', '56px', '64px'],
-              height: 'auto',
-              bottom: 0,
-            },
-          }}
-        >
-          <List>
-            <ListItem 
-              button 
-              selected={activeView === 'dashboard'} 
-              onClick={() => handleViewChange('dashboard')}
-            >
-              <ListItemIcon>
-                <DashboardIcon color={activeView === 'dashboard' ? 'primary' : 'inherit'} />
-              </ListItemIcon>
-              <ListItemText primary="Dashboard" />
-            </ListItem>
-            <ListItem 
-              button 
-              selected={activeView === 'research'} 
-              onClick={() => handleViewChange('research')}
-            >
-              <ListItemIcon>
-                <SearchIcon color={activeView === 'research' ? 'primary' : 'inherit'} />
-              </ListItemIcon>
-              <ListItemText primary="Research" />
-            </ListItem>
-            <ListItem 
-              button 
-              selected={activeView === 'history'} 
-              onClick={() => handleViewChange('history')}
-            >
-              <ListItemIcon>
-                <HistoryIcon color={activeView === 'history' ? 'primary' : 'inherit'} />
-              </ListItemIcon>
-              <ListItemText primary="History" />
-            </ListItem>
-            <Divider />
-            <ListItem 
-              button 
-              selected={activeView === 'settings'} 
-              onClick={() => handleViewChange('settings')}
-            >
-              <ListItemIcon>
-                <SettingsIcon color={activeView === 'settings' ? 'primary' : 'inherit'} />
-              </ListItemIcon>
-              <ListItemText primary="Settings" />
-            </ListItem>
-          </List>
-        </Drawer>
-        
-        {/* Main Content */}
-        <Box
-          component="main"
-          sx={{
-            flexGrow: 1,
-            p: 3,
-            ml: isMobile ? 0 : '240px',
-            transition: theme.transitions.create('margin', {
-              easing: theme.transitions.easing.sharp,
-              duration: theme.transitions.duration.leavingScreen,
-            }),
-          }}
-        >
-          <Container maxWidth="xl" sx={{ mt: 2, mb: 4 }}>
+
+        <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+          {/* Left Navigation Drawer */}
+          <Drawer
+            variant={isMobile ? "temporary" : "persistent"}
+            open={isMobile ? drawerOpen : true}
+            onClose={toggleDrawer}
+            sx={{
+              width: DRAWER_WIDTH,
+              flexShrink: 0,
+              '& .MuiDrawer-paper': {
+                width: DRAWER_WIDTH,
+                boxSizing: 'border-box',
+                top: isMobile ? 0 : '64px',
+                height: isMobile ? '100%' : 'calc(100% - 64px)',
+              },
+            }}
+          >
+            <List>
+              <ListItem button selected={activeView === 'dashboard'} onClick={() => handleViewChange('dashboard')}>
+                <ListItemIcon><DashboardIcon color={activeView === 'dashboard' ? 'primary' : 'inherit'} /></ListItemIcon>
+                <ListItemText primary="Dashboard" />
+              </ListItem>
+              <ListItem button selected={activeView === 'research'} onClick={() => handleViewChange('research')}>
+                <ListItemIcon><SearchIcon color={activeView === 'research' ? 'primary' : 'inherit'} /></ListItemIcon>
+                <ListItemText primary="Research" />
+              </ListItem>
+              <ListItem button selected={activeView === 'history'} onClick={() => handleViewChange('history')}>
+                <ListItemIcon><HistoryIcon color={activeView === 'history' ? 'primary' : 'inherit'} /></ListItemIcon>
+                <ListItemText primary="History" />
+              </ListItem>
+              <Divider />
+              <ListItem button selected={activeView === 'settings'} onClick={() => handleViewChange('settings')}>
+                <ListItemIcon><SettingsIcon color={activeView === 'settings' ? 'primary' : 'inherit'} /></ListItemIcon>
+                <ListItemText primary="Settings" />
+              </ListItem>
+            </List>
+          </Drawer>
+
+          {/* Main Content */}
+          <Box
+            component="main"
+            sx={{
+              flexGrow: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              ml: isMobile ? 0 : `${DRAWER_WIDTH}px`,
+              transition: theme.transitions.create('margin', {
+                easing: theme.transitions.easing.sharp,
+                duration: theme.transitions.duration.leavingScreen,
+              }),
+            }}
+          >
+            {/* Error Alert */}
             {error && (
-              <Alert 
-                severity="error" 
-                sx={{ mb: 3, borderRadius: 2 }}
+              <Alert
+                severity="error"
+                sx={{ m: 2, borderRadius: 2 }}
                 action={
-                  <IconButton
-                    aria-label="close"
-                    color="inherit"
-                    size="small"
-                    onClick={() => setError('')}
-                  >
+                  <IconButton size="small" color="inherit" onClick={() => setError('')}>
                     <CloseIcon fontSize="inherit" />
                   </IconButton>
                 }
@@ -335,87 +310,113 @@ function App() {
                 {error}
               </Alert>
             )}
-            
+
             {/* Dashboard View */}
-            {activeView === 'dashboard' && (
-              <Dashboard />
-            )}
-            
-            {/* Research View */}
+            {activeView === 'dashboard' && <Dashboard />}
+
+            {/* Research View - Chat-First Layout */}
             {activeView === 'research' && (
-              <Grid container spacing={3}>
-                {/* Left Sidebar: Form and Log */}
-                <Grid item xs={12} md={4}>
-                  <Paper elevation={3} sx={{ p: 3, mb: 2, borderRadius: 2 }}>
-                    <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold', color: 'primary.main', display: 'flex', alignItems: 'center' }}>
-                      <SearchIcon sx={{ mr: 1 }} />
-                      New Research Task
-                    </Typography>
-                    <ResearchForm onSubmit={handleStartResearch} isLoading={isStarting || isPolling} />
-                  </Paper>
-                  {(isStarting || isPolling) && (
-                    <Paper elevation={3} sx={{ p: 3, borderRadius: 2 }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                        <Typography variant="subtitle1" sx={{ fontWeight: 'medium', color: 'primary.main' }}>
-                          Current Step: 
-                        </Typography>
-                        <Chip 
-                          label={currentNodeMessage} 
-                          color="primary" 
-                          variant="outlined"
-                          size="small"
+              <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+                {/* Left Panel: Chat Interface */}
+                <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                  <ChatInterface
+                    messages={messages}
+                    onSendMessage={handleSendMessage}
+                    isLoading={isLoading}
+                    projectId={projectId}
+                  />
+                </Box>
+
+                {/* Right Panel: Mindmap / Report Tabs */}
+                {rightPanelOpen && (
+                  <Box
+                    sx={{
+                      width: RIGHT_PANEL_WIDTH,
+                      borderLeft: `1px solid ${theme.palette.divider}`,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      bgcolor: 'background.paper',
+                    }}
+                  >
+                    {/* Tab Bar */}
+                    <Tabs
+                      value={rightPanelTab}
+                      onChange={(e, v) => setRightPanelTab(v)}
+                      variant="fullWidth"
+                      sx={{ borderBottom: `1px solid ${theme.palette.divider}` }}
+                    >
+                      <Tab icon={<MapIcon />} label="Mindmap" iconPosition="start" />
+                      <Tab icon={<ArticleIcon />} label="Report" iconPosition="start" disabled={!reportData} />
+                      <Tab icon={<ViewListIcon />} label="Sources" iconPosition="start" disabled={!reportData} />
+                    </Tabs>
+
+                    {/* Tab Content */}
+                    <Box sx={{ flex: 1, overflow: 'auto' }}>
+                      {rightPanelTab === 0 && (
+                        <ResearchMindmap
+                          subQuestions={subQuestions}
+                          onNodeClick={handleNodeClick}
+                          projectId={projectId}
                         />
-                      </Box>
-                      <LinearProgress 
-                        variant={progress > 0 ? "determinate" : "indeterminate"} 
-                        value={progress} 
-                        sx={{ mb: 2, height: 8, borderRadius: 4 }} 
-                      />
-                      <AgentLog messages={agentMessages} />
-                    </Paper>
-                  )}
-                </Grid>
-                {/* Main Content: Report */}
-                <Grid item xs={12} md={8}>
-                  {reportData ? (
-                    <ReportDisplay reportData={reportData} />
-                  ) : (
-                    <Paper elevation={3} sx={{ p: 4, textAlign: 'center', borderRadius: 2 }}>
-                      <Box sx={{ py: 4 }}>
-                        <AnalyticsIcon sx={{ fontSize: 60, color: 'primary.light', mb: 2, opacity: 0.7 }} />
-                        <Typography variant="h5" gutterBottom sx={{ fontWeight: 'bold' }}>
-                          {isStarting || isPolling ? 'Research in Progress' : 'Welcome to Research Intelligence Platform'}
-                        </Typography>
-                        <Typography color="text.secondary" sx={{ maxWidth: 600, mx: 'auto', mb: 3 }}>
-                          {isStarting || isPolling 
-                            ? 'Your comprehensive research report will appear here when ready...'
-                            : 'Enter a research query to begin exploring data-driven insights with advanced analytics and visualizations.'}
-                        </Typography>
-                        {!isStarting && !isPolling && (
-                          <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, flexWrap: 'wrap' }}>
-                            <Chip label="Market Analysis" color="primary" onClick={() => handleViewChange('research')} />
-                            <Chip label="Competitive Research" color="secondary" onClick={() => handleViewChange('research')} />
-                            <Chip label="Industry Trends" color="info" onClick={() => handleViewChange('research')} />
-                            <Chip label="Technology Assessment" color="success" onClick={() => handleViewChange('research')} />
-                          </Box>
-                        )}
-                      </Box>
-                    </Paper>
-                  )}
-                </Grid>
-              </Grid>
+                      )}
+                      {rightPanelTab === 1 && reportData && (
+                        <ReportDisplay reportData={reportData} />
+                      )}
+                      {rightPanelTab === 2 && reportData && (
+                        <Box sx={{ p: 2 }}>
+                          <Typography variant="subtitle2" gutterBottom>Sources</Typography>
+                          {reportData.sources?.map((source, idx) => (
+                            <Chip
+                              key={idx}
+                              label={source.slice(0, 40) + '...'}
+                              size="small"
+                              variant="outlined"
+                              sx={{ m: 0.5 }}
+                            />
+                          ))}
+                        </Box>
+                      )}
+                    </Box>
+                  </Box>
+                )}
+
+                {/* Toggle Right Panel Button */}
+                <IconButton
+                  onClick={() => setRightPanelOpen(!rightPanelOpen)}
+                  sx={{
+                    position: 'absolute',
+                    right: rightPanelOpen ? RIGHT_PANEL_WIDTH + 8 : 8,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    bgcolor: 'background.paper',
+                    border: `1px solid ${theme.palette.divider}`,
+                    borderRadius: '50%',
+                    width: 28,
+                    height: 28,
+                    zIndex: 10,
+                    '&:hover': { bgcolor: 'action.hover' }
+                  }}
+                  size="small"
+                >
+                  {rightPanelOpen ? '»' : '«'}
+                </IconButton>
+              </Box>
             )}
-            
+
             {/* History View */}
             {activeView === 'history' && (
-              <ProjectHistory onSelectProject={handleSelectHistoryProject} />
+              <ProjectHistory
+                onSelectProject={(pid) => {
+                  setProjectId(pid);
+                  setActiveView('research');
+                  loadProjectData(pid);
+                }}
+              />
             )}
-            
+
             {/* Settings View */}
-            {activeView === 'settings' && (
-              <Settings />
-            )}
-          </Container>
+            {activeView === 'settings' && <Settings />}
+          </Box>
         </Box>
       </Box>
     </ThemeProvider>

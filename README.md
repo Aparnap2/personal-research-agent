@@ -1,146 +1,162 @@
 # Research Intelligence Platform
 
-![Research Intelligence Platform](docs/images/platform-banner.png)
+![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
+![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)
+![React 19](https://img.shields.io/badge/react-19-61DAFB.svg?logo=react)
+![LangGraph](https://img.shields.io/badge/LangGraph-0.0.30+-orange.svg)
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![React 18](https://img.shields.io/badge/react-18.0+-61DAFB.svg?logo=react)](https://reactjs.org/)
-[![LangGraph](https://img.shields.io/badge/LangGraph-0.0.30+-orange.svg)](https://github.com/langchain-ai/langgraph)
+## Overview
 
-## 🚀 Overview
+Research Intelligence Platform is an AI-driven research assistant that transforms complex queries into comprehensive reports. Built with a **ReAct-style LangGraph architecture**, it features a **chat-first UI** with streaming responses and **interactive mindmap visualization**.
 
-The Research Intelligence Platform is a powerful, AI-driven research assistant that transforms complex research queries into comprehensive, data-driven reports. Built with a sophisticated LangGraph architecture, this platform automates the entire research workflow from planning and data collection to statistical analysis and visualization.
+### Key Features
 
-**[Live Demo](https://research-intelligence-platform.demo.com)** | **[Documentation](https://github.com/yourusername/personal-research-agent/wiki)**
+- **ReAct Agent Architecture**: 5-node workflow (planner/searcher/fetcher/ranker/writer)
+- **Chat-First Interface**: Natural language interaction with streaming responses
+- **Interactive Mindmap**: ReactFlow visualization of sub-questions
+- **Real-Time Updates**: SSE streaming for live progress
+- **Citation Management**: Automatic extraction and formatting
+- **Statistical Analysis**: Pandas/NumPy-based data analysis
+- **Visualizations**: Matplotlib charts and tables
 
-![Dashboard Screenshot](docs/images/dashboard-screenshot.png)
+## Architecture
 
-## ✨ Features
+```
+┌─────────────────────────────────────────────────┐
+│ Frontend (React 19 + TypeScript + @xyflow/react)│
+├─────────────────────────────────────────────────┤
+│  ChatInterface │ ResearchMindmap │ ReportPanel │
+├─────────────────────────────────────────────────┤
+│         SSE Streaming + REST API                │
+├────────────────────┬────────────────────────────┤
+│ Backend (Flask + Celery)                        │
+│  /api/chat  │  /api/stream  │  /api/health      │
+├─────────────────────────────────────────────────┤
+│ ReAct Agent (LangGraph)                         │
+│  Planner → Search → Fetch → Rank → Write        │
+├─────────────────────────────────────────────────┤
+│ Tools (crawl4ai + statistical + visualization)  │
+├─────────────────────────────────────────────────┤
+│ SQLite (connection pooling) + Redis (Celery)    │
+└─────────────────────────────────────────────────┘
+```
 
-- **Advanced Research Automation**: Transform natural language queries into comprehensive research reports
-- **Multi-stage LangGraph Architecture**: Sophisticated agent workflow with specialized nodes for each research phase
-- **Data Validation & Quality Assessment**: Automatic validation of extracted data with quality scoring
-- **Citation Management**: Automatic extraction and formatting of citations in multiple academic styles
-- **Comparative Analysis**: Segment data across multiple dimensions for insightful comparisons
-- **Interactive Visualizations**: Generate charts, graphs, and tables to represent research findings
-- **Modern React UI**: Professional, responsive interface with dashboard analytics
-- **Project History**: Track and revisit previous research projects
-
-## 🔍 How It Works
-
-The platform uses a multi-stage LangGraph architecture to process research queries:
-
-1. **Research Planning**: Analyzes the query and creates a structured research plan
-2. **Web Search & Content Scraping**: Gathers relevant information from authoritative sources
-3. **Citation Management**: Extracts and formats citations from all sources
-4. **Content Synthesis**: Processes and synthesizes information into coherent insights
-5. **Quantitative Extraction**: Identifies and extracts numerical data from sources
-6. **Data Validation**: Validates extracted data for quality and consistency
-7. **Statistical Analysis**: Performs statistical analysis on validated data
-8. **Comparative Analysis**: Compares data across different segments and categories
-9. **Visualization**: Generates charts, graphs, and tables to represent findings
-10. **Report Compilation**: Creates a comprehensive, professional research report
-
-![Architecture Diagram](docs/images/architecture-diagram.png)
-
-## 🛠️ Technology Stack
-
-- **Backend**:
-  - Python 3.9+
-  - LangGraph for agent orchestration
-  - FastAPI for API endpoints
-  - Pandas & NumPy for data processing
-  - Matplotlib for chart generation
-
-- **Frontend**:
-  - React 18+
-  - Material-UI for component library
-  - React Router for navigation
-  - Chart.js for interactive visualizations
-
-## 📋 Installation
+## Quick Start
 
 ### Prerequisites
 
-- Python 3.9+
-- Node.js 16+
-- API key for LLM service (Google Gemini, OpenAI, etc.)
+- Python 3.12+
+- Node.js 18+
+- pnpm
+- Docker (for code execution sandbox)
+- Redis (optional, for async tasks)
 
 ### Backend Setup
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/personal-research-agent.git
-cd personal-research-agent
+cd backend
 
-# Create and activate virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+# Create virtual environment
+python -m venv env
+source env/bin/activate  # Windows: env\Scripts\activate
 
 # Install dependencies
 pip install -r requirements.txt
 
-# Set up environment variables
+# Set up environment
 cp .env.example .env
-# Edit .env with your API keys
+# Edit .env with your GEMINI_API_KEY
 
-# Start the backend server
-cd backend
-uvicorn main:app --reload
+# Start the server
+python app_research.py
 ```
 
 ### Frontend Setup
 
 ```bash
-# Navigate to frontend directory
 cd frontend
 
 # Install dependencies
-npm install
+pnpm install
 
-# Start the development server
-npm start
+# Start development server
+pnpm dev
 ```
 
-Visit `http://localhost:3000` to access the application.
+Visit `http://localhost:5173` to access the application.
 
-## 🧪 Example Usage
+## API Endpoints
 
-1. Enter a research query like "Market size and growth projections for AI in healthcare diagnostics in North America for 2024-2026"
-2. The system will process the query through its LangGraph workflow
-3. Monitor progress in real-time as the agent works through each research phase
-4. Receive a comprehensive report with:
-   - Executive summary
-   - Detailed analysis
-   - Statistical findings
-   - Comparative insights
-   - Data visualizations
-   - Citations and references
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/start_research` | Start new research project |
+| GET | `/api/research_status/<id>` | Get research status |
+| POST | `/api/chat/<id>` | Send chat message (streaming) |
+| GET | `/api/stream/<id>` | SSE stream for real-time updates |
+| GET | `/api/projects` | List all projects |
+| GET | `/api/health` | Health check endpoint |
 
-## 🤝 Contributing
+## Configuration
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+### Environment Variables
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `GEMINI_API_KEY` | Google Gemini API key | Yes |
+| `DEBUG` | Enable debug mode | No |
+| `LOG_LEVEL` | Logging level (INFO, DEBUG, etc.) | No |
+| `REDIS_URL` | Redis broker URL (Celery) | No |
 
-## 📄 License
+## Tech Stack
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+### Backend
 
-## 📞 Contact
+- **Python 3.12+** - Core language
+- **Flask** - Web framework
+- **LangGraph** - Agent orchestration
+- **crawl4ai** - Web scraping
+- **Pandas/NumPy** - Data processing
+- **Celery** - Async task queue
+- **Pydantic** - Validation
 
-For freelance inquiries or collaboration opportunities:
+### Frontend
 
-- Email: your.email@example.com
-- LinkedIn: [Your Name](https://linkedin.com/in/yourprofile)
-- Portfolio: [yourportfolio.com](https://yourportfolio.com)
+- **React 19** - UI framework
+- **Material-UI 7** - Component library
+- **@xyflow/react** - Mindmap visualization
+- **Vite** - Build tool
+- **Chart.js** - Charts
 
----
+## Development
 
-<p align="center">
-  <i>Built with ❤️ by Your Name</i>
-</p>
+### Running Tests
+
+```bash
+# Backend tests
+cd backend
+pytest tests/ -v
+
+# Type checking
+mypy backend/ --strict
+```
+
+### Docker Services
+
+```bash
+# Start code executor (sandboxed Python execution)
+docker-compose up code-executor
+
+# Start all services
+docker-compose up --build
+```
+
+## Security
+
+- Settings validation via Pydantic models
+- Docker resource limits (CPU, memory)
+- Health check endpoints
+- Input sanitization on all endpoints
+
+## License
+
+MIT License - see [LICENSE](LICENSE) file for details.

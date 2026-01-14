@@ -3,6 +3,8 @@ import os
 import json
 import logging
 from datetime import datetime
+from contextlib import contextmanager
+from typing import Generator, Optional
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -10,12 +12,75 @@ logger = logging.getLogger(__name__)
 # Database file path
 DB_PATH = os.path.join(os.path.dirname(__file__), 'research_projects.db')
 
+# Connection pool configuration
+_POOL_SIZE = 5
+_db_pool: list[sqlite3.Connection] = []
+
+
+def _init_pool() -> None:
+    """Initialize the connection pool."""
+    global _db_pool
+    for _ in range(_POOL_SIZE):
+        conn = sqlite3.connect(DB_PATH, timeout=5.0)
+        conn.row_factory = sqlite3.Row
+        _db_pool.append(conn)
+    logger.info(f"Database connection pool initialized with {_POOL_SIZE} connections")
+
+
+def _get_connection() -> sqlite3.Connection:
+    """Get a connection from the pool."""
+    global _db_pool
+    if not _db_pool:
+        _init_pool()
+    try:
+        return _db_pool.pop()
+    except IndexError:
+        # Pool exhausted, create a new connection
+        conn = sqlite3.connect(DB_PATH, timeout=5.0)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+
+def _return_connection(conn: sqlite3.Connection) -> None:
+    """Return a connection to the pool."""
+    global _db_pool
+    if len(_db_pool) < _POOL_SIZE:
+        try:
+            # Verify connection is still valid
+            conn.execute("SELECT 1")
+            _db_pool.append(conn)
+        except sqlite3.Error:
+            conn.close()
+    else:
+        conn.close()
+
+
+@contextmanager
+def get_db() -> Generator[sqlite3.Connection, None, None]:
+    """Context manager for database connections with pooling.
+
+    Usage:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM projects")
+            ...
+    """
+    conn = _get_connection()
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        _return_connection(conn)
+
+
 def init_db():
     """Initialize the SQLite database with required tables."""
-    try:
-        conn = sqlite3.connect(DB_PATH)
+    with get_db() as conn:
         cursor = conn.cursor()
-        
+
         # Create projects table
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS projects (
@@ -29,7 +94,7 @@ def init_db():
             processing_time_seconds INTEGER DEFAULT 0
         )
         ''')
-        
+
         # Create project_files table to track files associated with each project
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS project_files (
@@ -41,7 +106,7 @@ def init_db():
             FOREIGN KEY (project_id) REFERENCES projects (id)
         )
         ''')
-        
+
         # Create project_metadata table for additional project data
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS project_metadata (
@@ -52,38 +117,22 @@ def init_db():
             FOREIGN KEY (project_id) REFERENCES projects (id)
         )
         ''')
-        
-        conn.commit()
+
         logger.info("Database initialized successfully")
-        return True
-    except sqlite3.Error as e:
-        logger.error(f"Database initialization error: {e}")
-        return False
-    finally:
-        if conn:
-            conn.close()
 
 def create_project(project_id, query):
     """Create a new project record in the database."""
-    try:
-        conn = sqlite3.connect(DB_PATH)
+    with get_db() as conn:
         cursor = conn.cursor()
-        
+
         now = datetime.now().isoformat()
         cursor.execute(
             "INSERT INTO projects (id, query, created_at, status) VALUES (?, ?, ?, ?)",
             (project_id, query, now, "in_progress")
         )
-        
-        conn.commit()
+
         logger.info(f"Created project record: {project_id}")
         return True
-    except sqlite3.Error as e:
-        logger.error(f"Error creating project {project_id}: {e}")
-        return False
-    finally:
-        if conn:
-            conn.close()
 
 def update_project_status(project_id, status, metadata=None):
     """Update a project's status and optionally add metadata."""

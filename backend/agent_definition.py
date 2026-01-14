@@ -15,6 +15,8 @@ from typing import TypedDict, List, Dict, Optional, Any
 # Import database module
 import database
 
+from utils.synthetic_data import generate_synthetic_quantitative_data
+
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
@@ -545,23 +547,7 @@ def statistical_analysis_node(state: ResearchAgentState) -> ResearchAgentState:
         
         # Create synthetic data to ensure statistical analysis happens
         research_plan = state.get("research_plan", "General research")
-        synthetic_data = [
-            {"metric_name": "Primary Metric 1", "value": 75.0, "unit": "%", "category": "Performance", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "Primary Metric 2", "value": 42.0, "unit": "%", "category": "Adoption", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "Primary Metric 3", "value": 125000.0, "unit": "USD", "category": "Financial", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "Secondary Metric 1", "value": 18.5, "unit": "Months", "category": "Timeline", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "Secondary Metric 2", "value": 3.8, "unit": "Score", "category": "Rating", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "Growth Rate", "value": 22.5, "unit": "%", "category": "Growth", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "Market Share", "value": 34.0, "unit": "%", "category": "Market", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "User Satisfaction", "value": 87.5, "unit": "%", "category": "User", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "Implementation Cost", "value": 50000.0, "unit": "USD", "category": "Financial", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "ROI", "value": 145.0, "unit": "%", "category": "Financial", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "Efficiency Gain", "value": 28.0, "unit": "%", "category": "Performance", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "Adoption Rate", "value": 62.0, "unit": "%", "category": "Adoption", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "Time Saved", "value": 15.0, "unit": "Hours/Week", "category": "Efficiency", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "Error Reduction", "value": 45.0, "unit": "%", "category": "Quality", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "Customer Retention", "value": 82.0, "unit": "%", "category": "Business", "confidence": 3, "source_citation": "Synthetic data"}
-        ]
+        synthetic_data = generate_synthetic_quantitative_data()
         
         # Add a note that this is synthetic data
         current_messages = _add_message({"messages": current_messages}, "Created synthetic data to ensure statistical analysis can proceed", "info")
@@ -754,23 +740,7 @@ def visualization_node(state: ResearchAgentState) -> ResearchAgentState:
         current_messages = _add_message({"messages": current_messages}, msg, "warning")
         
         # Use the same synthetic data structure as in the statistical analysis node
-        quantitative_data = [
-            {"metric_name": "Primary Metric 1", "value": 75.0, "unit": "%", "category": "Performance", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "Primary Metric 2", "value": 42.0, "unit": "%", "category": "Adoption", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "Primary Metric 3", "value": 125000.0, "unit": "USD", "category": "Financial", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "Secondary Metric 1", "value": 18.5, "unit": "Months", "category": "Timeline", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "Secondary Metric 2", "value": 3.8, "unit": "Score", "category": "Rating", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "Growth Rate", "value": 22.5, "unit": "%", "category": "Growth", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "Market Share", "value": 34.0, "unit": "%", "category": "Market", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "User Satisfaction", "value": 87.5, "unit": "%", "category": "User", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "Implementation Cost", "value": 50000.0, "unit": "USD", "category": "Financial", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "ROI", "value": 145.0, "unit": "%", "category": "Financial", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "Efficiency Gain", "value": 28.0, "unit": "%", "category": "Performance", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "Adoption Rate", "value": 62.0, "unit": "%", "category": "Adoption", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "Time Saved", "value": 15.0, "unit": "Hours/Week", "category": "Efficiency", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "Error Reduction", "value": 45.0, "unit": "%", "category": "Quality", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "Customer Retention", "value": 82.0, "unit": "%", "category": "Business", "confidence": 3, "source_citation": "Synthetic data"}
-        ]
+        quantitative_data = generate_synthetic_quantitative_data()
         
         # Add time series data for trend charts
         time_series_data = []

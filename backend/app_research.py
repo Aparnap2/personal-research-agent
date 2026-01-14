@@ -1,12 +1,47 @@
 # app_research.py
 from flask import Flask, request, jsonify, send_from_directory, url_for
 from flask_cors import CORS
+from pydantic import BaseModel, validator, ValidationError
+from typing import Optional, Literal
 import os
 import json
 import logging
 import time # For initial message timestamp
 import agent_definition
 import database # Import our SQLite database module
+
+
+# Pydantic models for settings validation
+class SettingsUpdate(BaseModel):
+    """Validated settings update request."""
+    api_key: Optional[str] = None
+    api_model: Optional[Literal["gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.0-pro"]] = None
+    temperature: Optional[float] = None
+    max_projects: Optional[int] = None
+    debug_mode: Optional[bool] = None
+
+    @validator('api_key')
+    def validate_api_key(cls, v):
+        if v is not None:
+            # Basic validation - API keys should be non-empty strings
+            if not v or len(v) < 10:
+                raise ValueError('API key must be at least 10 characters')
+            # Google API keys typically start with 'AIza'
+            if not v.startswith('AIza'):
+                flask_logger.warning("API key format may be invalid (doesn't start with AIza)")
+        return v
+
+    @validator('temperature')
+    def validate_temperature(cls, v):
+        if v is not None and not (0 <= v <= 1):
+            raise ValueError('Temperature must be between 0 and 1')
+        return v
+
+    @validator('max_projects')
+    def validate_max_projects(cls, v):
+        if v is not None and not (1 <= v <= 100):
+            raise ValueError('max_projects must be between 1 and 100')
+        return v
 
 # Configure basic logging for Flask app
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - [%(threadName)s] - %(message)s (%(filename)s:%(lineno)d)')
@@ -235,18 +270,36 @@ def get_settings():
         flask_logger.error(f"API: Error getting settings: {e}", exc_info=True)
         return jsonify({"error": f"Error getting settings: {str(e)}"}), 500
 
+
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """Health check endpoint for container orchestration."""
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    return jsonify({
+        "status": "healthy",
+        "version": "1.0.0",
+        "llm_available": bool(gemini_key),
+        "timestamp": time.time()
+    }), 200
+
 @app.route('/api/settings', methods=['POST'])
 def update_settings():
-    """Update application settings."""
+    """Update application settings with Pydantic validation."""
     try:
         if not request.is_json:
             return jsonify({"error": "Request must be JSON"}), 400
-            
+
         data = request.get_json()
-        
+
+        # Validate input with Pydantic
+        try:
+            validated = SettingsUpdate(**data)
+        except ValidationError as e:
+            return jsonify({"error": "Validation error", "details": e.errors()}), 400
+
         # Update .env file with new settings
         env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
-        
+
         # Read existing .env file
         env_vars = {}
         if os.path.exists(env_path):
@@ -256,33 +309,34 @@ def update_settings():
                     if line and not line.startswith('#') and '=' in line:
                         key, value = line.split('=', 1)
                         env_vars[key] = value
-        
-        # Update with new values
-        if 'api_key' in data and data['api_key'] and not data['api_key'].startswith('*'):
-            env_vars['GEMINI_API_KEY'] = data['api_key']
-            os.environ['GEMINI_API_KEY'] = data['api_key']
-        
-        if 'api_model' in data:
-            env_vars['API_MODEL'] = data['api_model']
-            os.environ['API_MODEL'] = data['api_model']
-            
-        if 'temperature' in data:
-            env_vars['TEMPERATURE'] = str(data['temperature'])
-            os.environ['TEMPERATURE'] = str(data['temperature'])
-            
-        if 'max_projects' in data:
-            env_vars['MAX_PROJECTS'] = str(data['max_projects'])
-            os.environ['MAX_PROJECTS'] = str(data['max_projects'])
-            
-        if 'debug_mode' in data:
-            env_vars['DEBUG'] = str(data['debug_mode']).lower()
-            os.environ['DEBUG'] = str(data['debug_mode']).lower()
-        
+
+        # Update with validated values (safely)
+        if validated.api_key is not None:
+            env_vars['GEMINI_API_KEY'] = validated.api_key
+            os.environ['GEMINI_API_KEY'] = validated.api_key
+
+        if validated.api_model is not None:
+            env_vars['API_MODEL'] = validated.api_model
+            os.environ['API_MODEL'] = validated.api_model
+
+        if validated.temperature is not None:
+            env_vars['TEMPERATURE'] = str(validated.temperature)
+            os.environ['TEMPERATURE'] = str(validated.temperature)
+
+        if validated.max_projects is not None:
+            env_vars['MAX_PROJECTS'] = str(validated.max_projects)
+            os.environ['MAX_PROJECTS'] = str(validated.max_projects)
+
+        if validated.debug_mode is not None:
+            env_vars['DEBUG'] = str(validated.debug_mode).lower()
+            os.environ['DEBUG'] = str(validated.debug_mode).lower()
+
         # Write back to .env file
         with open(env_path, 'w') as f:
             for key, value in env_vars.items():
                 f.write(f"{key}={value}\n")
-        
+
+        flask_logger.info("Settings updated successfully")
         return jsonify({"message": "Settings updated successfully"}), 200
     except Exception as e:
         flask_logger.error(f"API: Error updating settings: {e}", exc_info=True)

@@ -9,6 +9,8 @@ import logging
 import random
 from typing import Dict, List, Any, Optional
 
+from utils.synthetic_data import generate_synthetic_quantitative_data
+
 # Configure logging
 logger = logging.getLogger(__name__)
 
@@ -30,24 +32,8 @@ def statistical_analysis_node(state, current_messages=None):
         
         # Create synthetic data to ensure statistical analysis happens
         research_plan = state.get("research_plan", "General research")
-        synthetic_data = [
-            {"metric_name": "Primary Metric 1", "value": 75.0, "unit": "%", "category": "Performance", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "Primary Metric 2", "value": 42.0, "unit": "%", "category": "Adoption", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "Primary Metric 3", "value": 125000.0, "unit": "USD", "category": "Financial", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "Secondary Metric 1", "value": 18.5, "unit": "Months", "category": "Timeline", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "Secondary Metric 2", "value": 3.8, "unit": "Score", "category": "Rating", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "Growth Rate", "value": 22.5, "unit": "%", "category": "Growth", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "Market Share", "value": 34.0, "unit": "%", "category": "Market", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "User Satisfaction", "value": 87.5, "unit": "%", "category": "User", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "Implementation Cost", "value": 50000.0, "unit": "USD", "category": "Financial", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "ROI", "value": 145.0, "unit": "%", "category": "Financial", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "Efficiency Gain", "value": 28.0, "unit": "%", "category": "Performance", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "Time Saved", "value": 12.5, "unit": "Hours/Week", "category": "Efficiency", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "Error Reduction", "value": 65.0, "unit": "%", "category": "Quality", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "Conversion Rate", "value": 3.2, "unit": "%", "category": "Marketing", "confidence": 3, "source_citation": "Synthetic data"},
-            {"metric_name": "Customer Retention", "value": 82.0, "unit": "%", "category": "Customer", "confidence": 3, "source_citation": "Synthetic data"}
-        ]
-        
+        synthetic_data = generate_synthetic_quantitative_data()
+
         # Add some randomness to make it more realistic
         for item in synthetic_data:
             item["value"] = item["value"] * (0.8 + random.random() * 0.4)  # +/- 20%

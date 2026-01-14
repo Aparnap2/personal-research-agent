@@ -29,6 +29,53 @@ RETRY_DELAY = 2  # seconds
 os.makedirs(DOCKER_INPUT_DIR, exist_ok=True)
 os.makedirs(DOCKER_OUTPUT_DIR, exist_ok=True)
 
+
+def _get_container_name() -> str:
+    """Get code-executor container name dynamically.
+
+    Returns the container name or raises RuntimeError if not found.
+    """
+    # Method 1: Get from docker-compose ps (most reliable for this setup)
+    try:
+        project_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        result = subprocess.run(
+            ["docker-compose", "ps", "-q", "code-executor"],
+            capture_output=True,
+            text=True,
+            cwd=project_dir
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            container_short_id = result.stdout.strip()
+            # Get the actual container name
+            inspect = subprocess.run(
+                ["docker", "inspect", "--format", "{{.Name}}", container_short_id],
+                capture_output=True,
+                text=True
+            )
+            if inspect.returncode == 0:
+                name = inspect.stdout.strip().lstrip('/')
+                logger.debug(f"Found container: {name}")
+                return name
+    except Exception as e:
+        logger.debug(f"Docker compose method failed: {e}")
+
+    # Method 2: Filter by name using docker ps
+    try:
+        result = subprocess.run(
+            ["docker", "ps", "--filter", "name=code-executor", "--format", "{{.Names}}"],
+            capture_output=True,
+            text=True
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            # Return first matching container
+            name = result.stdout.strip().split('\n')[0]
+            logger.debug(f"Found container via docker ps: {name}")
+            return name
+    except Exception as e:
+        logger.debug(f"Docker ps method failed: {e}")
+
+    raise RuntimeError("code-executor container not found. Please ensure it's running.")
+
 class CodeExecutionService:
     """Service for generating and executing Python code for data analysis and visualization."""
     
@@ -821,8 +868,10 @@ results['tables'] = [summary_df.to_dict()]
                 time.sleep(5)  # Wait for container to start
             
             # Execute code in container
+            container_name = _get_container_name()
+            logger.info(f"Executing code in container: {container_name}")
             subprocess.run(
-                ["docker", "exec", "personal-research-agent-code-executor-1", "python", "code_executor.py"],
+                ["docker", "exec", container_name, "python", "code_executor.py"],
                 capture_output=True,
                 text=True
             )

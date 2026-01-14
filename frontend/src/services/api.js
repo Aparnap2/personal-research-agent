@@ -79,6 +79,7 @@ export async function getSettings() {
   return response.json();
 }
 
+
 export async function updateSettings(settings) {
   const response = await fetch(`${API_BASE_URL}/settings`, {
     method: 'POST',
@@ -87,6 +88,68 @@ export async function updateSettings(settings) {
     },
     body: JSON.stringify(settings),
   });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ message: "Unknown error occurred" }));
+    throw new Error(errorData.error || errorData.message || `HTTP error! status: ${response.status}`);
+  }
+  return response.json();
+}
+
+// Chat API functions for streaming research responses
+export async function sendChatMessage(projectId, message) {
+  const response = await fetch(`${API_BASE_URL}/chat/${projectId}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ message }),
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ message: "Unknown error occurred" }));
+    throw new Error(errorData.error || errorData.message || `HTTP error! status: ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function streamResearch(projectId, onChunk, onComplete, onError) {
+  const eventSource = new EventSource(`${API_BASE_URL}/stream/${projectId}`);
+
+  eventSource.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      if (data.type === 'chunk') {
+        onChunk(data.content);
+      } else if (data.type === 'complete') {
+        onComplete(data.result);
+        eventSource.close();
+      } else if (data.type === 'error') {
+        onError(data.message);
+        eventSource.close();
+      }
+    } catch (e) {
+      console.error('Error parsing SSE data:', e);
+    }
+  };
+
+  eventSource.onerror = () => {
+    onError('Connection error occurred');
+    eventSource.close();
+  };
+
+  return () => eventSource.close();
+}
+
+export async function getSubQuestions(projectId) {
+  const response = await fetch(`${API_BASE_URL}/research/${projectId}/sub_questions`);
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ message: "Unknown error occurred" }));
+    throw new Error(errorData.error || errorData.message || `HTTP error! status: ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function getResearchReport(projectId) {
+  const response = await fetch(`${API_BASE_URL}/research/${projectId}/report`);
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({ message: "Unknown error occurred" }));
     throw new Error(errorData.error || errorData.message || `HTTP error! status: ${response.status}`);
