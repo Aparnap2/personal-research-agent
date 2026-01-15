@@ -16,8 +16,8 @@ from typing import TypedDict, List, Dict, Optional, Any
 import database
 
 from utils.synthetic_data import generate_synthetic_quantitative_data
+from llm_factory import LLMFactory, get_llm
 
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 from langgraph.graph import StateGraph, END
@@ -39,17 +39,14 @@ if not logger.handlers:
 
 # Load environment variables
 load_dotenv()
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-llm = None
-if GEMINI_API_KEY:
-    try:
-        llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", google_api_key=GEMINI_API_KEY, temperature=0.3, top_p=0.9) # Adjusted temp/top_p
-        logger.info("LLM initialized successfully (gemini-1.5-flash).")
-    except Exception as e:
-        logger.error(f"Failed to initialize LLM: {e}", exc_info=True)
+# Initialize LLM using factory (supports both Gemini and Ollama)
+llm = get_llm(temperature=0.3, top_p=0.9)
+if llm:
+    llm_provider = os.getenv("LLM_PROVIDER", "gemini")
+    logger.info(f"LLM initialized successfully using {llm_provider} provider.")
 else:
-    logger.error("GEMINI_API_KEY not found. LLM not initialized. Agent capabilities will be severely limited.")
+    logger.error("Failed to initialize LLM. Agent capabilities will be severely limited.")
 
 class ResearchAgentState(TypedDict):
     project_id: str

@@ -22,13 +22,12 @@ RUN pip install --no-cache-dir \
     nbconvert \
     ipython
 
+# Create directories for code execution (BEFORE switching user)
+RUN mkdir -p /app/input /app/output && chown -R 1000:1000 /app
+
 # Create a non-root user to run the code
 RUN useradd -m -u 1000 codeuser
 USER codeuser
-
-# Create directories for code execution
-RUN mkdir -p /app/input /app/output
-WORKDIR /app
 
 # Copy the code execution script
 COPY --chown=codeuser:codeuser code_executor.py /app/
@@ -43,9 +42,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import os; exit(0 if os.path.exists('/app/healthy') else 1)"
 
 # Resource limits via Python (soft limits, docker-compose can enforce hard limits)
-CMD ["python", "-c", \
-     "import os; " \
-     "os.environ['OPENBLAS_NUM_THREADS'] = '1'; " \
-     "os.environ['MKL_NUM_THREADS'] = '1'; " \
-     "with open('/app/healthy', 'w') as f: f.write('ready'); " \
-     "import code_executor; code_executor.main()"]
+CMD python -c "import os; os.environ['OPENBLAS_NUM_THREADS']='1'; os.environ['MKL_NUM_THREADS']='1'; open('/app/healthy','w').write('ready'); import code_executor; code_executor.main()"

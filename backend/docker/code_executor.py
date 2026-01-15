@@ -152,29 +152,54 @@ def write_output(results):
         return False
 
 def main():
-    """Main execution function."""
+    """Main execution function - runs in a loop watching for input files."""
+    import glob
+
     logger.info("Starting code executor")
     setup_environment()
-    
-    # Check for input file
-    if not os.path.exists(os.path.join(INPUT_DIR, "code.py")):
-        logger.info("Waiting for input file...")
-        return
-    
-    logger.info("Reading input files")
-    code, data = read_input()
-    
-    if code is None:
-        logger.error("Failed to read input files")
-        return
-    
-    logger.info("Executing code")
-    results = execute_code(code, data)
-    
-    logger.info("Writing output")
-    write_output(results)
-    
-    logger.info("Execution complete")
+
+    last_execution = None
+
+    while True:
+        # Check for code files
+        code_files = glob.glob(os.path.join(INPUT_DIR, "*/code.py"))
+
+        if code_files:
+            # Get the latest execution folder
+            latest_folder = max(code_files).rsplit("/", 1)[0]
+            code_path = os.path.join(latest_folder, "code.py")
+            data_path = os.path.join(latest_folder, "data.json")
+
+            # Check if this is a new execution
+            if latest_folder != last_execution:
+                last_execution = latest_folder
+                logger.info(f"Found new execution in {latest_folder}")
+
+                # Read and execute
+                if os.path.exists(code_path):
+                    with open(code_path, "r") as f:
+                        code = f.read()
+
+                    data = {}
+                    if os.path.exists(data_path):
+                        with open(data_path, "r") as f:
+                            data = json.load(f)
+
+                    results = execute_code(code, data)
+                    write_output(results)
+
+                    logger.info("Execution complete")
+
+                    # Clean up input files
+                    try:
+                        os.remove(code_path)
+                        if os.path.exists(data_path):
+                            os.remove(data_path)
+                    except:
+                        pass
+        else:
+            # No files - wait and check again
+            time.sleep(1)
 
 if __name__ == "__main__":
     main()

@@ -12,12 +12,14 @@ Research Intelligence Platform is an AI-driven research assistant that transform
 ### Key Features
 
 - **ReAct Agent Architecture**: 5-node workflow (planner/searcher/fetcher/ranker/writer)
+- **Local LLM Support**: Ollama integration (qwen2.5-coder:3b, granite3.1-moe:3b)
 - **Chat-First Interface**: Natural language interaction with streaming responses
 - **Interactive Mindmap**: ReactFlow visualization of sub-questions
 - **Real-Time Updates**: SSE streaming for live progress
-- **Citation Management**: Automatic extraction and formatting
-- **Statistical Analysis**: Pandas/NumPy-based data analysis
-- **Visualizations**: Matplotlib charts and tables
+- **Web Scraping**: crawl4ai for fast, AI-ready content extraction
+- **Docker Code Execution**: Sandboxed Python for data analysis
+- **Statistical Analysis**: Pandas/NumPy-based data processing
+- **Visualizations**: Matplotlib charts as base64
 
 ## Architecture
 
@@ -100,12 +102,22 @@ Visit `http://localhost:5173` to access the application.
 
 ### Environment Variables
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `GEMINI_API_KEY` | Google Gemini API key | Yes |
-| `DEBUG` | Enable debug mode | No |
-| `LOG_LEVEL` | Logging level (INFO, DEBUG, etc.) | No |
-| `REDIS_URL` | Redis broker URL (Celery) | No |
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| `LLM_PROVIDER` | LLM provider: "gemini" or "ollama" | No | "gemini" |
+| `GEMINI_API_KEY` | Google Gemini API key | If LLM_PROVIDER=gemini | - |
+| `OLLAMA_BASE_URL` | Ollama server URL | If LLM_PROVIDER=ollama | "http://localhost:11434" |
+| `OLLAMA_MODEL` | Ollama model name | No | "qwen2.5-coder:3b" |
+| `DEBUG` | Enable debug mode | No | False |
+| `LOG_LEVEL` | Logging level (INFO, DEBUG) | No | "INFO" |
+| `REDIS_URL` | Redis broker URL (Celery) | No | - |
+
+### Ollama Models
+
+Recommended models (already pulled):
+- `qwen2.5-coder:3b` - Coding tasks (1.9 GB)
+- `granite3.1-moe:3b` - Reasoning tasks (2.0 GB)
+- `nomic-embed-text:v1.5` - Text embeddings (274 MB)
 
 ## Tech Stack
 
