@@ -1,0 +1,33 @@
+# Docker Compose for Research Agent Services
+# Note: Due to RAM constraints, prefer running services individually
+# Run with: docker run <service-name> instead of docker-compose up
+
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: research-agent-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  code-executor:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile
+    container_name: research-agent-code-executor
+    volumes:
+      - ./docker/input:/app/input
+      - ./docker/output:/app/output
+    restart: unless-stopped
+
+volumes:
+  redis_data:
