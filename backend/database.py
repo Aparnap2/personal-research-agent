@@ -2,6 +2,7 @@ import sqlite3
 import os
 import json
 import logging
+import threading
 from datetime import datetime
 from contextlib import contextmanager
 from typing import Generator, Optional
@@ -12,52 +13,24 @@ logger = logging.getLogger(__name__)
 # Database file path
 DB_PATH = os.path.join(os.path.dirname(__file__), 'research_projects.db')
 
-# Connection pool configuration
-_POOL_SIZE = 5
-_db_pool: list[sqlite3.Connection] = []
+# Thread-local storage for connections
+_local = threading.local()
 
-
-def _init_pool() -> None:
-    """Initialize the connection pool."""
-    global _db_pool
-    for _ in range(_POOL_SIZE):
-        conn = sqlite3.connect(DB_PATH, timeout=5.0)
-        conn.row_factory = sqlite3.Row
-        _db_pool.append(conn)
-    logger.info(f"Database connection pool initialized with {_POOL_SIZE} connections")
-
-
-def _get_connection() -> sqlite3.Connection:
-    """Get a connection from the pool."""
-    global _db_pool
-    if not _db_pool:
-        _init_pool()
-    try:
-        return _db_pool.pop()
-    except IndexError:
-        # Pool exhausted, create a new connection
-        conn = sqlite3.connect(DB_PATH, timeout=5.0)
-        conn.row_factory = sqlite3.Row
-        return conn
-
-
-def _return_connection(conn: sqlite3.Connection) -> None:
-    """Return a connection to the pool."""
-    global _db_pool
-    if len(_db_pool) < _POOL_SIZE:
-        try:
-            # Verify connection is still valid
-            conn.execute("SELECT 1")
-            _db_pool.append(conn)
-        except sqlite3.Error:
-            conn.close()
-    else:
-        conn.close()
+def _get_thread_connection() -> sqlite3.Connection:
+    """Get a connection for the current thread."""
+    if not hasattr(_local, 'conn') or _local.conn is None:
+        _local.conn = sqlite3.connect(DB_PATH, timeout=5.0, isolation_level=None)
+        _local.conn.row_factory = sqlite3.Row
+        # Enable WAL mode for better concurrency
+        _local.conn.execute("PRAGMA journal_mode=WAL")
+        _local.conn.execute("PRAGMA busy_timeout=30000")
+        logger.debug(f"Created new database connection for thread {threading.current_thread().name}")
+    return _local.conn
 
 
 @contextmanager
 def get_db() -> Generator[sqlite3.Connection, None, None]:
-    """Context manager for database connections with pooling.
+    """Context manager for database connections using thread-local storage.
 
     Usage:
         with get_db() as conn:
@@ -65,15 +38,13 @@ def get_db() -> Generator[sqlite3.Connection, None, None]:
             cursor.execute("SELECT * FROM projects")
             ...
     """
-    conn = _get_connection()
+    conn = _get_thread_connection()
     try:
         yield conn
         conn.commit()
     except Exception:
         conn.rollback()
         raise
-    finally:
-        _return_connection(conn)
 
 
 def init_db():
@@ -137,131 +108,115 @@ def create_project(project_id, query):
 def update_project_status(project_id, status, metadata=None):
     """Update a project's status and optionally add metadata."""
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
+        conn = _get_thread_connection()
+
         now = datetime.now().isoformat()
         if status == "completed":
-            cursor.execute(
+            conn.execute(
                 "UPDATE projects SET status = ?, completed_at = ? WHERE id = ?",
                 (status, now, project_id)
             )
         else:
-            cursor.execute(
+            conn.execute(
                 "UPDATE projects SET status = ? WHERE id = ?",
                 (status, project_id)
             )
-        
+
         # Add metadata if provided
         if metadata and isinstance(metadata, dict):
             for key, value in metadata.items():
                 if isinstance(value, (dict, list)):
                     value = json.dumps(value)
-                cursor.execute(
+                conn.execute(
                     "INSERT OR REPLACE INTO project_metadata (project_id, key, value) VALUES (?, ?, ?)",
                     (project_id, key, str(value))
                 )
-        
-        conn.commit()
+
         logger.info(f"Updated project {project_id} status to {status}")
         return True
     except sqlite3.Error as e:
         logger.error(f"Error updating project {project_id}: {e}")
         return False
-    finally:
-        if conn:
-            conn.close()
 
 def register_project_file(project_id, file_path, file_type):
     """Register a file associated with a project."""
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
+        conn = _get_thread_connection()
+
         now = datetime.now().isoformat()
-        cursor.execute(
+        conn.execute(
             "INSERT INTO project_files (project_id, file_path, file_type, created_at) VALUES (?, ?, ?, ?)",
             (project_id, file_path, file_type, now)
         )
-        
+
         # Update counts based on file type
         if file_type == "chart":
-            cursor.execute(
+            conn.execute(
                 "UPDATE projects SET charts_count = charts_count + 1 WHERE id = ?",
                 (project_id,)
             )
-        
-        conn.commit()
+
         logger.info(f"Registered {file_type} file for project {project_id}: {file_path}")
         return True
     except sqlite3.Error as e:
         logger.error(f"Error registering file for project {project_id}: {e}")
         return False
-    finally:
-        if conn:
-            conn.close()
 
 def update_project_metrics(project_id, sources_count=None, processing_time=None):
     """Update project metrics like sources count and processing time."""
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
+        conn = _get_thread_connection()
+
         updates = []
         params = []
-        
+
         if sources_count is not None:
             updates.append("sources_count = ?")
             params.append(sources_count)
-        
+
         if processing_time is not None:
             updates.append("processing_time_seconds = ?")
             params.append(processing_time)
-        
+
         if updates:
             query = f"UPDATE projects SET {', '.join(updates)} WHERE id = ?"
             params.append(project_id)
-            cursor.execute(query, params)
-            
-            conn.commit()
+            conn.execute(query, params)
+
             logger.info(f"Updated metrics for project {project_id}")
             return True
         return False
     except sqlite3.Error as e:
         logger.error(f"Error updating metrics for project {project_id}: {e}")
         return False
-    finally:
-        if conn:
-            conn.close()
 
 def get_project(project_id):
     """Get a project by ID with its metadata."""
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = _get_thread_connection()
         conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
+
         # Get project data
-        cursor.execute("SELECT * FROM projects WHERE id = ?", (project_id,))
+        cursor = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,))
         project = cursor.fetchone()
-        
+
         if not project:
             return None
-        
+
         # Convert to dict
         project_dict = dict(project)
-        
+
         # Get metadata
-        cursor.execute("SELECT key, value FROM project_metadata WHERE project_id = ?", (project_id,))
+        cursor = conn.execute("SELECT key, value FROM project_metadata WHERE project_id = ?", (project_id,))
         metadata = cursor.fetchall()
-        
+
         # Add metadata to project dict
         project_dict['metadata'] = {row['key']: row['value'] for row in metadata}
-        
+
         # Get files
-        cursor.execute("SELECT file_path, file_type FROM project_files WHERE project_id = ?", (project_id,))
+        cursor = conn.execute("SELECT file_path, file_type FROM project_files WHERE project_id = ?", (project_id,))
         files = cursor.fetchall()
-        
+
         # Group files by type
         project_dict['files'] = {}
         for row in files:
@@ -269,52 +224,44 @@ def get_project(project_id):
             if file_type not in project_dict['files']:
                 project_dict['files'][file_type] = []
             project_dict['files'][file_type].append(row['file_path'])
-        
+
         return project_dict
     except sqlite3.Error as e:
         logger.error(f"Error getting project {project_id}: {e}")
         return None
-    finally:
-        if conn:
-            conn.close()
 
 def get_all_projects(limit=50, offset=0, status=None):
     """Get all projects with optional filtering by status."""
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = _get_thread_connection()
         conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
+
         query = "SELECT * FROM projects"
         params = []
-        
+
         if status:
             query += " WHERE status = ?"
             params.append(status)
-        
+
         query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
-        
-        cursor.execute(query, params)
+
+        cursor = conn.execute(query, params)
         projects = [dict(row) for row in cursor.fetchall()]
-        
+
         return projects
     except sqlite3.Error as e:
         logger.error(f"Error getting projects: {e}")
         return []
-    finally:
-        if conn:
-            conn.close()
 
 def get_project_stats():
     """Get statistics about projects."""
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
+        conn = _get_thread_connection()
+
         # Get total counts
-        cursor.execute("""
-        SELECT 
+        cursor = conn.execute("""
+        SELECT
             COUNT(*) as total,
             SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
             SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
@@ -324,9 +271,9 @@ def get_project_stats():
             AVG(processing_time_seconds) as avg_processing_time
         FROM projects
         """)
-        
+
         result = cursor.fetchone()
-        
+
         stats = {
             "total_projects": result[0] or 0,
             "completed_projects": result[1] or 0,
@@ -336,15 +283,15 @@ def get_project_stats():
             "total_charts": result[5] or 0,
             "avg_processing_time": result[6] or 0
         }
-        
+
         # Get recent projects
-        cursor.execute("""
+        cursor = conn.execute("""
         SELECT id, query, created_at, status
         FROM projects
         ORDER BY created_at DESC
         LIMIT 5
         """)
-        
+
         recent_projects = []
         for row in cursor.fetchall():
             recent_projects.append({
@@ -353,9 +300,9 @@ def get_project_stats():
                 "created_at": row[2],
                 "status": row[3]
             })
-        
+
         stats["recent_projects"] = recent_projects
-        
+
         return stats
     except sqlite3.Error as e:
         logger.error(f"Error getting project stats: {e}")
@@ -369,34 +316,26 @@ def get_project_stats():
             "avg_processing_time": 0,
             "recent_projects": []
         }
-    finally:
-        if conn:
-            conn.close()
 
 def delete_project(project_id):
     """Delete a project and all associated data."""
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
+        conn = _get_thread_connection()
+
         # Delete project files
-        cursor.execute("DELETE FROM project_files WHERE project_id = ?", (project_id,))
-        
+        conn.execute("DELETE FROM project_files WHERE project_id = ?", (project_id,))
+
         # Delete project metadata
-        cursor.execute("DELETE FROM project_metadata WHERE project_id = ?", (project_id,))
-        
+        conn.execute("DELETE FROM project_metadata WHERE project_id = ?", (project_id,))
+
         # Delete project
-        cursor.execute("DELETE FROM projects WHERE id = ?", (project_id,))
-        
-        conn.commit()
+        conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+
         logger.info(f"Deleted project {project_id}")
         return True
     except sqlite3.Error as e:
         logger.error(f"Error deleting project {project_id}: {e}")
         return False
-    finally:
-        if conn:
-            conn.close()
 
 # Initialize the database when this module is imported
 init_db()
